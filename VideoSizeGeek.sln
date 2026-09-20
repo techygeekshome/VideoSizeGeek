@@ -1,0 +1,50 @@
+
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{783A7929-D7B2-489D-BCCC-E0FDA0219A10}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VideoSizeGeek.Core", "src\VideoSizeGeek.Core\VideoSizeGeek.Core.csproj", "{1CD1C632-84AE-4385-8650-53FA1039F7B9}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TechyGeeksHome.Common", "src\TechyGeeksHome.Common\TechyGeeksHome.Common.csproj", "{B140F967-82CA-4337-B260-AEB948A9B4D0}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VideoSizeGeek", "src\VideoSizeGeek\VideoSizeGeek.csproj", "{DF262570-2F03-4F23-80BA-664AD5E85926}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{51D1CAA3-9D22-4FEB-98B9-0453B6DB6389}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VideoSizeGeek.Tests", "tests\VideoSizeGeek.Tests\VideoSizeGeek.Tests.csproj", "{923CDF82-61AB-4496-B617-B97943BE2D26}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{1CD1C632-84AE-4385-8650-53FA1039F7B9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1CD1C632-84AE-4385-8650-53FA1039F7B9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1CD1C632-84AE-4385-8650-53FA1039F7B9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1CD1C632-84AE-4385-8650-53FA1039F7B9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B140F967-82CA-4337-B260-AEB948A9B4D0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B140F967-82CA-4337-B260-AEB948A9B4D0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B140F967-82CA-4337-B260-AEB948A9B4D0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B140F967-82CA-4337-B260-AEB948A9B4D0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DF262570-2F03-4F23-80BA-664AD5E85926}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DF262570-2F03-4F23-80BA-664AD5E85926}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DF262570-2F03-4F23-80BA-664AD5E85926}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DF262570-2F03-4F23-80BA-664AD5E85926}.Release|Any CPU.Build.0 = Release|Any CPU
+		{923CDF82-61AB-4496-B617-B97943BE2D26}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{923CDF82-61AB-4496-B617-B97943BE2D26}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{923CDF82-61AB-4496-B617-B97943BE2D26}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{923CDF82-61AB-4496-B617-B97943BE2D26}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{1CD1C632-84AE-4385-8650-53FA1039F7B9} = {783A7929-D7B2-489D-BCCC-E0FDA0219A10}
+		{B140F967-82CA-4337-B260-AEB948A9B4D0} = {783A7929-D7B2-489D-BCCC-E0FDA0219A10}
+		{DF262570-2F03-4F23-80BA-664AD5E85926} = {783A7929-D7B2-489D-BCCC-E0FDA0219A10}
+		{923CDF82-61AB-4496-B617-B97943BE2D26} = {51D1CAA3-9D22-4FEB-98B9-0453B6DB6389}
+	EndGlobalSection
+EndGlobal
