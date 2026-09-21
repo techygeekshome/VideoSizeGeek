@@ -1,3 +1,4 @@
+using System.Net.Http;
 using VideoSizeGeek.Core.Models;
 using VideoSizeGeek.Core.Services;
 
@@ -11,8 +12,8 @@ public sealed record PresetOption(string Name, SizePreset? Preset)
 
     public static IReadOnlyList<PresetOption> All { get; } =
         SizePreset.All.Select(p => new PresetOption(p.Name, p))
-            .Append(Custom)
-            .ToList();
+        .Append(Custom)
+        .ToList();
 }
 
 /// <summary>
@@ -21,232 +22,294 @@ public sealed record PresetOption(string Name, SizePreset? Preset)
 /// </summary>
 public sealed class MainViewModel : ObservableObject
 {
-    private readonly string? _ffmpegPath = FfmpegTools.FindFfmpeg();
-    private readonly string? _ffprobePath = FfmpegTools.FindFfprobe();
+private static readonly HttpClient _http = new();
 
-    public MainViewModel()
-    {
-        PickFileCommand = new AsyncRelayCommand(PickFileAsync);
-        StartCommand = new AsyncRelayCommand(StartAsync, () => CanStart);
-        ShowAboutCommand = new RelayCommand(() => AboutRequested?.Invoke());
-        SelectedPreset = PresetOption.All[0];
-    }
+private string? _ffmpegPath;
+private string? _ffprobePath;
 
-    public event Action? AboutRequested;
-    public Func<Task<string?>>? RequestOpenFileDialog;
-    public Action<string>? RequestRevealInExplorer;
+public MainViewModel()
+{
+PickFileCommand = new AsyncRelayCommand(PickFileAsync);
+StartCommand = new AsyncRelayCommand(StartAsync, () => CanStart);
+ShowAboutCommand = new RelayCommand(() => AboutRequested?.Invoke());
+DownloadFfmpegCommand = new AsyncRelayCommand(DownloadFfmpegAsync, () => !IsDownloadingFfmpeg);
+SelectedPreset = PresetOption.All[0];
+RefreshFfmpegState();
+}
 
-    public bool FfmpegAvailable => _ffmpegPath is not null && _ffprobePath is not null;
-    public string FfmpegMissingMessage =>
-        "VideoSizeGeek needs ffmpeg to encode video and does not bundle a copy. Install it from " +
-        FfmpegTools.OfficialBuildsUrl + " and make sure ffmpeg.exe and ffprobe.exe are on your PATH, then restart VideoSizeGeek.";
+public event Action? AboutRequested;
+public Func<Task<string?>>? RequestOpenFileDialog;
+public Action<string>? RequestRevealInExplorer;
 
-    public IReadOnlyList<PresetOption> Presets => PresetOption.All;
+public bool FfmpegAvailable => _ffmpegPath is not null && _ffprobePath is not null;
 
-    private string? _sourcePath;
-    public string? SourcePath
-    {
-        get => _sourcePath;
-        private set
-        {
-            if (!SetField(ref _sourcePath, value)) return;
-            OnPropertyChanged(nameof(SourceFileName));
-            OnPropertyChanged(nameof(HasSource));
-        }
-    }
+public string FfmpegMissingMessage =>
+$"VideoSizeGeek needs ffmpeg to encode video and does not bundle a copy. Fetch it below: a one-time download of about {FfmpegCatalog.ApproxBytes / 1_000_000d:0} MB from {FfmpegCatalog.PublisherUrl}, checked against a known checksum before anything runs. Already have ffmpeg on your PATH instead? It will be picked up automatically, no need to download again.";
 
-    public string SourceFileName => SourcePath is null ? "" : Path.GetFileName(SourcePath);
-    public bool HasSource => SourcePath is not null;
+public string FfmpegDownloadButtonText => $"Download ffmpeg ({FfmpegCatalog.ApproxBytes / 1_000_000d:0} MB)";
 
-    private ProbeResult? _probe;
-    public ProbeResult? Probe
-    {
-        get => _probe;
-        private set { SetField(ref _probe, value); OnPropertyChanged(nameof(DurationText)); RecomputePlan(); }
-    }
+private bool _isDownloadingFfmpeg;
+public bool IsDownloadingFfmpeg
+{
+get => _isDownloadingFfmpeg;
+private set
+{
+SetField(ref _isDownloadingFfmpeg, value);
+((AsyncRelayCommand)DownloadFfmpegCommand).RaiseCanExecuteChanged();
+}
+}
 
-    public string DurationText => Probe is null ? "" : $"{TimeSpan.FromSeconds(Probe.DurationSeconds):mm\\:ss} long";
+private double _ffmpegDownloadProgress;
+public double FfmpegDownloadProgress { get => _ffmpegDownloadProgress; private set => SetField(ref _ffmpegDownloadProgress, value); }
 
-    private PresetOption _selectedPreset = PresetOption.Custom;
-    public PresetOption SelectedPreset
-    {
-        get => _selectedPreset;
-        set
-        {
-            if (!SetField(ref _selectedPreset, value)) return;
-            OnPropertyChanged(nameof(IsCustomSize));
-            RecomputePlan();
-        }
-    }
+private string _ffmpegDownloadStatus = "";
+public string FfmpegDownloadStatus { get => _ffmpegDownloadStatus; private set => SetField(ref _ffmpegDownloadStatus, value); }
 
-    public bool IsCustomSize => SelectedPreset.Preset is null;
+public IReadOnlyList<PresetOption> Presets => PresetOption.All;
 
-    private double _customMegabytes = 10;
-    public double CustomMegabytes
-    {
-        get => _customMegabytes;
-        set { if (SetField(ref _customMegabytes, value)) RecomputePlan(); }
-    }
+private string? _sourcePath;
+public string? SourcePath
+{
+get => _sourcePath;
+private set
+{
+if (!SetField(ref _sourcePath, value)) return;
+OnPropertyChanged(nameof(SourceFileName));
+OnPropertyChanged(nameof(HasSource));
+}
+}
 
-    private bool _includeAudio = true;
-    public bool IncludeAudio
-    {
-        get => _includeAudio;
-        set { if (SetField(ref _includeAudio, value)) RecomputePlan(); }
-    }
+public string SourceFileName => SourcePath is null ? "" : Path.GetFileName(SourcePath);
+public bool HasSource => SourcePath is not null;
 
-    private EncodePlan? _plan;
-    public EncodePlan? Plan
-    {
-        get => _plan;
-        private set
-        {
-            if (!SetField(ref _plan, value)) return;
-            OnPropertyChanged(nameof(PlanSummary));
-            OnPropertyChanged(nameof(ShowFloorWarning));
-            ((AsyncRelayCommand)StartCommand).RaiseCanExecuteChanged();
-        }
-    }
+private ProbeResult? _probe;
+public ProbeResult? Probe
+{
+get => _probe;
+private set { SetField(ref _probe, value); OnPropertyChanged(nameof(DurationText)); RecomputePlan(); }
+}
 
-    public string PlanSummary => Plan is null ? "" :
-        $"Target {FormatBytes(Plan.TargetBytes)}  |  video {Plan.VideoKbps} kbps" +
-        (Plan.AudioIncluded ? $", audio {Plan.AudioKbps} kbps" : ", no audio");
+public string DurationText => Probe is null ? "" : $"{TimeSpan.FromSeconds(Probe.DurationSeconds):mm\\:ss} long";
 
-    public bool ShowFloorWarning => Plan?.BelowQualityFloor == true;
-    public string? FloorWarning => Plan?.FloorWarning;
+private PresetOption _selectedPreset = PresetOption.Custom;
+public PresetOption SelectedPreset
+{
+get => _selectedPreset;
+set
+{
+if (!SetField(ref _selectedPreset, value)) return;
+OnPropertyChanged(nameof(IsCustomSize));
+RecomputePlan();
+}
+}
 
-    private bool _isBusy;
-    public bool IsBusy { get => _isBusy; private set => SetField(ref _isBusy, value); }
+public bool IsCustomSize => SelectedPreset.Preset is null;
 
-    private double _progressFraction;
-    public double ProgressFraction { get => _progressFraction; private set => SetField(ref _progressFraction, value); }
+private double _customMegabytes = 10;
+public double CustomMegabytes
+{
+get => _customMegabytes;
+set { if (SetField(ref _customMegabytes, value)) RecomputePlan(); }
+}
 
-    private string _statusText = "";
-    public string StatusText { get => _statusText; private set => SetField(ref _statusText, value); }
+private bool _includeAudio = true;
+public bool IncludeAudio
+{
+get => _includeAudio;
+set { if (SetField(ref _includeAudio, value)) RecomputePlan(); }
+}
 
-    private string? _resultPath;
-    public string? ResultPath
-    {
-        get => _resultPath;
-        private set { SetField(ref _resultPath, value); OnPropertyChanged(nameof(HasResult)); }
-    }
-    public bool HasResult => ResultPath is not null;
+private EncodePlan? _plan;
+public EncodePlan? Plan
+{
+get => _plan;
+private set
+{
+if (!SetField(ref _plan, value)) return;
+OnPropertyChanged(nameof(PlanSummary));
+OnPropertyChanged(nameof(ShowFloorWarning));
+((AsyncRelayCommand)StartCommand).RaiseCanExecuteChanged();
+}
+}
 
-    private bool CanStart => HasSource && Plan is not null && !IsBusy && FfmpegAvailable;
+public string PlanSummary => Plan is null ? "" :
+$"Target {FormatBytes(Plan.TargetBytes)} | video {Plan.VideoKbps} kbps" +
+(Plan.AudioIncluded ? $", audio {Plan.AudioKbps} kbps" : ", no audio");
 
-    public System.Windows.Input.ICommand PickFileCommand { get; }
-    public System.Windows.Input.ICommand StartCommand { get; }
-    public System.Windows.Input.ICommand ShowAboutCommand { get; }
+public bool ShowFloorWarning => Plan?.BelowQualityFloor == true;
+public string? FloorWarning => Plan?.FloorWarning;
 
-    public async Task LoadFileAsync(string path)
-    {
-        if (_ffprobePath is null) return;
+private bool _isBusy;
+public bool IsBusy { get => _isBusy; private set => SetField(ref _isBusy, value); }
 
-        StatusText = "Reading the file...";
-        SourcePath = path;
-        ResultPath = null;
-        try
-        {
-            Probe = await MediaProbe.ProbeAsync(_ffprobePath, path);
-            StatusText = "";
-        }
-        catch (MediaProbeException ex)
-        {
-            StatusText = $"Could not read that file: {ex.Message}";
-            SourcePath = null;
-            Probe = null;
-        }
-    }
+private double _progressFraction;
+public double ProgressFraction { get => _progressFraction; private set => SetField(ref _progressFraction, value); }
 
-    private async Task PickFileAsync()
-    {
-        if (RequestOpenFileDialog is null) return;
-        var path = await RequestOpenFileDialog();
-        if (path is not null)
-            await LoadFileAsync(path);
-    }
+private string _statusText = "";
+public string StatusText { get => _statusText; private set => SetField(ref _statusText, value); }
 
-    private void RecomputePlan()
-    {
-        if (Probe is null) { Plan = null; return; }
+private string? _resultPath;
+public string? ResultPath
+{
+get => _resultPath;
+private set { SetField(ref _resultPath, value); OnPropertyChanged(nameof(HasResult)); }
+}
+public bool HasResult => ResultPath is not null;
 
-        var targetBytes = SelectedPreset.Preset?.TargetBytes
-            ?? (long)(CustomMegabytes * 1024 * 1024);
+private bool CanStart => HasSource && Plan is not null && !IsBusy && FfmpegAvailable;
 
-        if (targetBytes <= 0) { Plan = null; return; }
+public System.Windows.Input.ICommand PickFileCommand { get; }
+public System.Windows.Input.ICommand StartCommand { get; }
+public System.Windows.Input.ICommand ShowAboutCommand { get; }
+public System.Windows.Input.ICommand DownloadFfmpegCommand { get; }
 
-        try
-        {
-            Plan = BitrateBudget.CreatePlan(targetBytes, Probe.DurationSeconds, IncludeAudio && Probe.HasAudioStream);
-        }
-        catch (ArgumentOutOfRangeException)
-        {
-            Plan = null;
-        }
-    }
+public async Task LoadFileAsync(string path)
+{
+if (_ffprobePath is null) return;
 
-    private async Task StartAsync()
-    {
-        if (SourcePath is null || Plan is null || _ffmpegPath is null) return;
+StatusText = "Reading the file...";
+SourcePath = path;
+ResultPath = null;
+try
+{
+Probe = await MediaProbe.ProbeAsync(_ffprobePath, path);
+StatusText = "";
+}
+catch (MediaProbeException ex)
+{
+StatusText = $"Could not read that file: {ex.Message}";
+SourcePath = null;
+Probe = null;
+}
+}
 
-        IsBusy = true;
-        ResultPath = null;
-        ProgressFraction = 0;
-        StatusText = "Starting...";
+private async Task PickFileAsync()
+{
+if (RequestOpenFileDialog is null) return;
+var path = await RequestOpenFileDialog();
+if (path is not null)
+await LoadFileAsync(path);
+}
 
-        try
-        {
-            var outputPath = NextFreeOutputPath(SourcePath, Plan.TargetBytes);
-            var encoder = new TwoPassEncoder(_ffmpegPath);
-            var progress = new Progress<EncodeProgress>(p =>
-            {
-                ProgressFraction = p.FractionComplete;
-                StatusText = p.Message;
-            });
+private void RecomputePlan()
+{
+if (Probe is null) { Plan = null; return; }
 
-            var outcome = await encoder.EncodeAsync(SourcePath, outputPath, Plan, progress);
+var targetBytes = SelectedPreset.Preset?.TargetBytes
+?? (long)(CustomMegabytes * 1024 * 1024);
 
-            if (outcome.Success)
-            {
-                ResultPath = outcome.OutputPath;
-                StatusText = outcome.Message;
-            }
-            else
-            {
-                StatusText = $"That did not work: {outcome.Message}";
-            }
-        }
-        finally
-        {
-            IsBusy = false;
-        }
-    }
+if (targetBytes <= 0) { Plan = null; return; }
 
-    public void RevealResult()
-    {
-        if (ResultPath is not null)
-            RequestRevealInExplorer?.Invoke(ResultPath);
-    }
+try
+{
+Plan = BitrateBudget.CreatePlan(targetBytes, Probe.DurationSeconds, IncludeAudio && Probe.HasAudioStream);
+}
+catch (ArgumentOutOfRangeException)
+{
+Plan = null;
+}
+}
 
-    private static string NextFreeOutputPath(string sourcePath, long targetBytes)
-    {
-        var dir = Path.GetDirectoryName(sourcePath) ?? ".";
-        var stem = Path.GetFileNameWithoutExtension(sourcePath);
-        var label = FormatBytes(targetBytes).Replace(" ", "");
-        var candidate = Path.Combine(dir, $"{stem}-{label}.mp4");
-        var n = 2;
-        while (File.Exists(candidate))
-        {
-            candidate = Path.Combine(dir, $"{stem}-{label}-{n}.mp4");
-            n++;
-        }
-        return candidate;
-    }
+private async Task StartAsync()
+{
+if (SourcePath is null || Plan is null || _ffmpegPath is null) return;
 
-    private static string FormatBytes(long bytes) => bytes switch
-    {
-        >= 1024 * 1024 => $"{bytes / 1024.0 / 1024.0:0.#} MB",
-        >= 1024 => $"{bytes / 1024.0:0} KB",
-        _ => $"{bytes} B"
-    };
+IsBusy = true;
+ResultPath = null;
+ProgressFraction = 0;
+StatusText = "Starting...";
+
+try
+{
+var outputPath = NextFreeOutputPath(SourcePath, Plan.TargetBytes);
+var encoder = new TwoPassEncoder(_ffmpegPath);
+var progress = new Progress<EncodeProgress>(p =>
+{
+ProgressFraction = p.FractionComplete;
+StatusText = p.Message;
+});
+
+var outcome = await encoder.EncodeAsync(SourcePath, outputPath, Plan, progress);
+
+if (outcome.Success)
+{
+ResultPath = outcome.OutputPath;
+StatusText = outcome.Message;
+}
+else
+{
+StatusText = $"That did not work: {outcome.Message}";
+}
+}
+finally
+{
+IsBusy = false;
+}
+}
+
+public void RevealResult()
+{
+if (ResultPath is not null)
+RequestRevealInExplorer?.Invoke(ResultPath);
+}
+
+private void RefreshFfmpegState()
+{
+_ffmpegPath = FfmpegTools.FindFfmpeg();
+_ffprobePath = FfmpegTools.FindFfprobe();
+OnPropertyChanged(nameof(FfmpegAvailable));
+((AsyncRelayCommand)StartCommand).RaiseCanExecuteChanged();
+}
+
+private async Task DownloadFfmpegAsync()
+{
+IsDownloadingFfmpeg = true;
+FfmpegDownloadStatus = "Downloading ffmpeg...";
+FfmpegDownloadProgress = 0;
+try
+{
+var progress = new Progress<double>(p =>
+{
+FfmpegDownloadProgress = p;
+FfmpegDownloadStatus = p < 1.0 ? $"Downloading ffmpeg... {p:P0}" : "Verifying...";
+});
+await FfmpegCatalog.DownloadAsync(_http, progress);
+FfmpegDownloadStatus = "";
+RefreshFfmpegState();
+}
+catch (FfmpegDownloadException ex)
+{
+FfmpegDownloadStatus = ex.Message;
+}
+catch (Exception ex)
+{
+FfmpegDownloadStatus = $"Could not download ffmpeg: {ex.Message}";
+}
+finally
+{
+IsDownloadingFfmpeg = false;
+}
+}
+
+private static string NextFreeOutputPath(string sourcePath, long targetBytes)
+{
+var dir = Path.GetDirectoryName(sourcePath) ?? ".";
+var stem = Path.GetFileNameWithoutExtension(sourcePath);
+var label = FormatBytes(targetBytes).Replace(" ", "");
+var candidate = Path.Combine(dir, $"{stem}-{label}.mp4");
+var n = 2;
+while (File.Exists(candidate))
+{
+candidate = Path.Combine(dir, $"{stem}-{label}-{n}.mp4");
+n++;
+}
+return candidate;
+}
+
+private static string FormatBytes(long bytes) => bytes switch
+{
+>= 1024 * 1024 => $"{bytes / 1024.0 / 1024.0:0.#} MB",
+>= 1024 => $"{bytes / 1024.0:0} KB",
+_ => $"{bytes} B"
+};
 }
