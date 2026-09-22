@@ -32,15 +32,14 @@ public static class FfmpegCatalog
   /// To move to a newer ffmpeg: change both of these together, never one alone.
   /// </summary>
   public const string DownloadUrl =
-    "https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-9.0.1-essentials_build.zip";
+    "https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-9.0.2-essentials_build.zip";
 
-  /// <summary>SHA-256 of the archive at DownloadUrl.</summary>
   public const string ExpectedSha256 =
-    "fec81ae03971d9dd4be3ebe02e263bd2ec1d789483f931bdba5f5715e65da2e9";
+    "60f467265b1e312373dbcd92200c2618a74850f98d3d078e94296bb3fa2047ba";
 
-  public const long ApproxBytes = 111_253_802;
+ public const long ApproxBytes = 114_768_076;
 
-  public const string Version = "9.0.1";
+  public const string Version = "9.0.2";
 
   /// <summary>Where the publisher's terms and source can be read. Shown next to the button.</summary>
   public const string PublisherUrl = "https://www.gyan.dev/ffmpeg/builds/";
