@@ -128,6 +128,7 @@ private set
 if (!SetField(ref _plan, value)) return;
 OnPropertyChanged(nameof(PlanSummary));
 OnPropertyChanged(nameof(ShowFloorWarning));
+OnPropertyChanged(nameof(FloorWarning));
 ((AsyncRelayCommand)StartCommand).RaiseCanExecuteChanged();
 }
 }
@@ -155,6 +156,9 @@ get => _resultPath;
 private set { SetField(ref _resultPath, value); OnPropertyChanged(nameof(HasResult)); }
 }
 public bool HasResult => ResultPath is not null;
+
+private string _resultMessage = "";
+public string ResultMessage { get => _resultMessage; private set => SetField(ref _resultMessage, value); }
 
 private bool CanStart => HasSource && Plan is not null && !IsBusy && FfmpegAvailable;
 
@@ -225,6 +229,9 @@ var outputPath = NextFreeOutputPath(SourcePath, Plan.TargetBytes);
 var encoder = new TwoPassEncoder(_ffmpegPath);
 var progress = new Progress<EncodeProgress>(p =>
 {
+// Progress<T> posts its callbacks, so the last few can land after the encode has
+// returned. Ignore them then, or "Done" overwrites the real result message.
+if (!IsBusy) return;
 ProgressFraction = p.FractionComplete;
 StatusText = p.Message;
 });
@@ -233,8 +240,9 @@ var outcome = await encoder.EncodeAsync(SourcePath, outputPath, Plan, progress);
 
 if (outcome.Success)
 {
+ResultMessage = $"{Path.GetFileName(outcome.OutputPath)}, {outcome.Message}";
 ResultPath = outcome.OutputPath;
-StatusText = outcome.Message;
+StatusText = "";
 }
 else
 {

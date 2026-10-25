@@ -117,7 +117,7 @@ IsVisible="{Binding StatusText.Length}" TextWrapping="Wrap" />
 <Grid ColumnDefinitions="*,Auto" Margin="16">
 <StackPanel Grid.Column="0">
 <TextBlock Text="Done" FontWeight="SemiBold" Foreground="{StaticResource GreenLight}" />
-<TextBlock Text="{Binding StatusText}" Classes="sub" Margin="0,3,0,0" TextWrapping="Wrap" />
+<TextBlock Text="{Binding ResultMessage}" Classes="sub" Margin="0,3,0,0" TextWrapping="Wrap" />
 </StackPanel>
 <Button Grid.Column="1" Classes="toolbtn" Content="Show in folder"
 Click="OnRevealResult" VerticalAlignment="Center" />
